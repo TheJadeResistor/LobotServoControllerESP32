@@ -18,8 +18,10 @@
 #define CMD_ACTION_GROUP_STOP   0x07
 #define CMD_ACTION_GROUP_SPEED  0x0B
 #define CMD_GET_BATTERY_VOLTAGE 0x0F 
+#define CMD_MULT_SERVO_POS_READ 0x15
 
 
+#define REAL_POS              0x15  
 #define BATTERY_VOLTAGE       0x0F  
 #define ACTION_GROUP_RUNNING  0x06
 #define ACTION_GROUP_STOPPED  0x07
@@ -44,8 +46,11 @@ class LobotServoController {
 
     uint16_t getBatteryVolt(void);
     uint16_t getBatteryVolt(uint32_t timeout);
+    uint16_t getRealPosition(void);
+    uint16_t getRealPosition(int servoNum);
     bool waitForStopping(uint32_t timeout);
     void sendCMDGetBatteryVolt(void);
+    void sendCMDGetRealPosition(int servoNum);
 	  bool isRunning(void);
 	  void receiveHandle(void);
     void getPosition(uint16_t pose[6]);
@@ -59,6 +64,8 @@ class LobotServoController {
   bool isUseHardwareSerial;
 	bool isGetBatteryVolt;
     uint16_t batteryVoltage;
+  bool isGetRealPosition; 
+    uint16_t realPosition;
 	bool isRunning_;
     Stream *SerialX;
   uint8_t data[30] = {0};

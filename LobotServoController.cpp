@@ -15,6 +15,8 @@
 
 #define BYTE_TO_HW(A, B) ((((uint16_t)(A)) << 8) | (uint8_t)(B))
 
+#define HEX_TO_DEC(A) ((((A) & 0xF0) >> 4) * 16 + ((A) & 0x0F)) //used for realPosition
+
 
 LobotServoController::LobotServoController(SoftwareSerial &A)
 {
@@ -39,7 +41,7 @@ LobotServoController::LobotServoController(HardwareSerial &A)
 	SerialX = (Stream*)(&A);
 }
 
-void LobotServoController::moveServo(uint8_t servoID, uint16_t Position, uint16_t Time)
+void LobotServoController::moveServo(uint8_t servoID, uint16_t Position, uint16_t Time) 
 {
 	uint8_t buf[11];
 	if (servoID > 31 || !(Time > 0)) {
@@ -84,11 +86,18 @@ void LobotServoController::moveServos(LobotServo servos[], uint8_t Num, uint16_t
 void LobotServoController::moveServos(uint8_t Num, uint16_t Time, ...)
 {
 	uint8_t buf[128];
-	va_list arg_ptr = NULL;
-	va_start(arg_ptr, Time);
-	if (Num < 1 || Num > 32 || (!(Time > 0)) || arg_ptr == NULL) {
-		return; 
-	}
+	// va_list arg_ptr = NULL;
+	// va_start(arg_ptr, Time);
+	// if (Num < 1 || Num > 32 || (!(Time > 0)) || arg_ptr == NULL) {
+	// 	return; 
+	// }
+	//edited for esp32
+	if (Num < 1 || Num > 32 || Time <= 0) {
+        return;
+    }
+    va_list arg_ptr;
+    va_start(arg_ptr, Time);
+	//edited for esp32
 	buf[0] = FRAME_HEADER;  
 	buf[1] = FRAME_HEADER;
 	buf[2] = Num * 3 + 5; 
@@ -192,6 +201,54 @@ uint16_t LobotServoController::getBatteryVolt(uint32_t timeout)
 	}
 	return batteryVoltage;
 }
+
+
+//edit
+void LobotServoController::sendCMDGetRealPosition(int servoNum) //only read one servo at a time
+{
+	uint8_t buf[6];
+	buf[0] = FRAME_HEADER;
+	buf[1] = FRAME_HEADER;
+	buf[2] = 4;   //data length = num servos+3              
+	buf[3] = CMD_MULT_SERVO_POS_READ; //command 21 or 0x15
+	buf[4] = 1; //num servos
+	buf[5] = servoNum;
+	if(!isUseHardwareSerial)
+		((SoftwareSerial*)(SerialX))->listen();
+	isGetRealPosition = false;
+	SerialX->write(buf, 6); 
+}
+
+uint16_t LobotServoController::getRealPosition(void)
+{
+	if(isGetRealPosition)
+	{
+		isGetRealPosition = false;
+		return realPosition;
+	}else{
+		return -1;
+	}
+}
+
+uint16_t LobotServoController::getRealPosition(int servoNum)
+{
+	uint32_t timeout = 1000;
+	isGetRealPosition = false;
+	sendCMDGetRealPosition(servoNum);
+	timeout += millis();
+	while(!isGetRealPosition)
+	{
+		if(timeout < millis())
+		{
+			return -1;
+		}
+		receiveHandle(); //fetches real position from reading the comm
+	}
+	return realPosition;
+}
+//edit
+
+
 bool LobotServoController::isRunning()
 {
 	return isRunning_;
@@ -260,6 +317,15 @@ void LobotServoController::receiveHandle()
 				isGetFrameHeader = false;
 				switch(buf[3])
 				{
+					case REAL_POS: //allows to call for absolute real hardware position of servo: even after system reboot
+						//realPosition = BYTE_TO_HW(buf[7], buf[6]); 
+						//buf[7], buf[6]: 65535 for when off. 994 when on -- buf[9], buf[8]: 65535/off 0/on  -- buf[8], buf[7]:65535/off 1/on
+						//nums from protocol manual: 0xF4 0x01 -> decimal 500 using little endian
+						//buf[6] is LSB or 0xF4 in this case, 0x01 is MSB
+						//0x01*256+0xF4 = 1*256+244 = 500 -> implemented below
+						realPosition = HEX_TO_DEC(buf[7])*256 + HEX_TO_DEC(buf[6]);
+						isGetRealPosition = true;
+						break;
 					case BATTERY_VOLTAGE:
 						batteryVoltage = BYTE_TO_HW(buf[5], buf[4]);
 						isGetBatteryVolt = true;
@@ -272,6 +338,8 @@ void LobotServoController::receiveHandle()
 						isRunning_ = false;
 						break;
 					default:
+						realPosition = NULL; //dont spam serial monitor
+						batteryVoltage = NULL; //dont spam serial monitor
 						break;
 				}
 			}
