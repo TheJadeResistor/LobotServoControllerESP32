@@ -1,4 +1,3 @@
-use:
 myController.getRealPosition(ServoID);
 
 ESP32/Arduino control with real-time position fetching. The original library didn't compile for the ESP32 Dev Module due to some variable definitions getting messed up with ESP32 selected, fixed here. Also added the ability to fetch a servo angle/position at any time in real-time, meaning you can retrieve real servo positions at any time and after reboot.
